@@ -1,0 +1,325 @@
+---
+title: "Projeto Random Forest"
+author: "Luan Santos"
+date: "06/11/2021"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r, echo=FALSE}
+knitr::opts_chunk$set(error = TRUE)
+```
+
+# Introdução
+
+Um novo modelo de *Credit Scoring* está sendo desenvolvido pela companhia X com o intuito de diminuir a quantidade de mau pagadores presentes em sua base de clientes. O objetivo é prever a variável BAD (ou seja, se o cliente é ou não inadimplente). Portanto, o presente documento irá demonstrar os passos que segui para desenvolvimento do modelo que preveja a variável BAD, passando por todos os aspectos de um projeto de Data Science.
+
+# Limpeza, Tratamento e Manipulação de Dados
+
+Pacotes que irei usar:
+
+```{r pacotes, message=FALSE}
+library(Amelia)
+library(caret)  
+library(ggplot2) 
+library(dplyr)
+library(readr)
+library(reshape) 
+library(randomForest)
+library(e1071)
+```
+
+Foi fornecido base de dados dos clientes da companhia para execução do estudo de caso. Vejamos abaixo:
+
+```{r mutual clientes, message=FALSE}
+(clientes <- read_csv("Clients.csv"))
+```
+
+Analisando a estrutura da base de dados:
+
+```{r estrutura de dados}
+str(clientes, give.attr = F)
+```
+
+### Verificando valores ausentes e os removendo do dataset 
+Para visualizar valores ausentes:
+
+```{r graph 1, warning=FALSE, fig.dim=c(8,3)}
+missmap(clientes, main = "Valores Missing Observados")
+```
+
+Contagem de valores ausentes 
+
+```{r}
+sapply(clientes, function(x) sum(is.na(x)))
+```
+
+```{r}
+clientes <- clientes %>%
+  mutate(...1 = NULL, education = NULL) %>%
+  tidyr::drop_na()
+
+str(clientes, give.attr = F)
+```
+
+```{r graph 2, warning=FALSE, fig.dim=c(8,3)}
+missmap(clientes, main = "Valores Missing Observados")
+```
+
+
+# Análise Exploratória
+
+Agora com a base de dados limpa, posso começar a explorar sua composição. Primeiro irei transformar a variável dependente para o tipo fator:
+
+```{r}
+class(clientes$BAD)
+
+clientes$BAD <- as.factor(clientes$BAD)
+class(clientes$BAD)
+```
+
+Agora verei o total de adimplentes vs inadimplentes:
+
+```{r}
+table(clientes$BAD)
+```
+
+Em porcentagens:
+
+```{r}
+prop.table(table(clientes$BAD))
+```
+
+Plot da distribuição
+
+```{r graph 3, fig.dim=c(8,3)}
+clientes %>%
+  ggplot(aes(x = BAD, y = length(BAD))) +
+  geom_bar(stat = "identity") +
+  labs(x = "BAD", y = "Quantidade") +
+  theme_bw()
+```
+
+# Manipulação de dados
+
+```{r set seed}
+set.seed(1234)
+```
+
+### Amostragem Estratificada
+Selecionando as linhas de acordo com a variável BAD como strata. Irei separar 75% da base em treino e 25% em teste.
+
+```{r strata}
+indice <- createDataPartition(clientes$BAD, p = 0.75, list = F)
+dim(indice)
+```
+Definindo os dados de treinamento para o modelo de ML. Definindo como subconjunto da base de dados original através dos números índices de linha
+
+```{r}
+dados_treino <- clientes[indice,]
+dim(dados_treino)
+```
+
+```{r}
+table(dados_treino$BAD)
+prop.table(table(dados_treino$BAD))
+```
+
+Comparando a base de treino e original
+
+```{r graph 4 - compare, fig.dim=c(8,4)}
+compare <- cbind(Treinamento = prop.table(table(dados_treino$BAD)),
+                 Original = prop.table(table(clientes$BAD)))
+
+melt_compare <- melt(compare)
+
+melt_compare %>%
+  ggplot(aes(x = X1, y = value)) +
+  geom_bar(aes(fill = X2), stat = "identity", position = "dodge") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+Definindo os dados de teste
+
+```{r}
+dados_teste <- clientes[-indice,]
+dim(dados_teste)
+```
+
+# Modelo de Machine Learning - Random Forest
+
+Utilizarei o conhecido algoritmo de **Random Forest** para treinar o modelo e então testá-lo nos dados para teste. Nesse primeiro momento utilizarei todas as variáveis com 100 árvores para ver o comportamento do modelo frente as variáveis da base de dados.
+
+```{r}
+(modelo_v1 <- randomForest(BAD ~ ., data = dados_treino, ntree = 100))
+```
+
+Sendo a estimativa de erro OOB como uma medida de erro sintética dos dados, podemos ver que modelo obteve uma taxa de erro de 19% inicialmente. Ao plotar o modelo (veja abaixo) vemos como ele começa errando bastante até se ajustar aos dados. 
+
+```{r graph 5, fig.dim=c(8,4)}
+plot(modelo_v1)
+```
+
+Efetuando as previsões com os dados de teste:
+
+```{r}
+previsoes_v1 <- predict(modelo_v1, dados_teste)
+```
+
+### Matriz de confusão (*confusion matrix*)
+
+```{r confusion matrix}
+(cm_v1 <- caret::confusionMatrix(previsoes_v1, dados_teste$BAD, positive = "1"))
+```
+
+Vemos como a *Accuracy* do modelo se mostrou bem alta, com valor acima de 80%.
+
+Agora vamos calcular outras métricas para avaliação do modelo, tais como *Precision*, *Recall* e *F1*. Primeiro vemos o valor do **Precision**, sendo ele uma boa métrica para saber a acurácia/precisão do modelo em relação aos valores previstos como positivos e o quanto realmente deles são positivos: 
+
+```{r}
+(precision <- posPredValue(previsoes_v1, dados_teste$BAD))
+```
+
+O valor da Precision demonstra que em 80% dos casos, o modelo atribui valores *True Positives* às observações Positivas.
+
+Agora calcularei o **Recall**, que é uma métrica calculada a partir da quantidade de Positivos Verdadeiros sobre o total de Positivos Reais da base. Isto é, essa métrica é feita para capturar quantos do total de Positivos, o modelo rotula como verdadeiro. 
+
+```{r}
+(recall <- sensitivity(previsoes_v1, dados_teste$BAD))
+```
+
+Para avaliação desses indicadores, é importanto vermos o problema real a ser resolvido com o modelo. Em outras palavras, é preciso observar a necessidade que ira ser preenchida pelo modelo. Para casos onde é dado peso maior aos Positivos Verdadeiros, deve-se olhar para a Precision. Ou seja, quanto o modelo classifica como Positivo Verdadeiro do total de predições Positivas.
+
+Por outro lado, para casos que se quer aumentar os True Positivos frente aos False Negative, deve-se olhar para o Recall. No nosso caso, a melhor métrica a ser selecionada seria o Recall, visto que queremos descobrir se um cliente será adimplente ou inadimplente. Ou seja, existe um custo maior associado ao classificar falsos negativos (clientes inadimplentes) visto que o objetivo do modelo é diminuir a inadimplencia e classificar melhor os clientes.
+
+Agora olhemos para a métrica F1-Score, que é um indicador que procura um balanceamento entre as duas métricas anteriores. Além disso, também é ideal para dados com distribuição desigual de classes (grande quantidade de negativos reais - nesse caso, adimplentes).
+
+```{r}
+(F1 <- 2 * ((precision * recall) / (precision + recall)))
+```
+
+Portanto, vemos um valor extremamente alto para o Recall e F1-Score, demonstrando ser um modelo "bom". Entretanto, vemos como o desbalanceamento entre as classes (alta quantidade de adimplentes) torna difícil avaliar bem o modelo, visto que esse desbalancemento estar viesando ele. Ou seja, ele está classificando mais como adimplentes do que inadimplentes.
+
+A seguir tentarei melhorar o modelo usando algumas técnicas.
+
+# Técnicas para melhoria do modelo
+
+### Balanceamento de Classe - Undersamplinp
+
+Primeiro, irei dividir a base de treino em 50/50 buscando balancear as classes.
+
+```{r}
+table(dados_treino$BAD)
+
+dados_balanceado <- dados_treino %>%
+  group_by(BAD) %>%
+  sample_n(table(dados_treino$BAD)[[2]]) %>%
+  ungroup()
+
+table(dados_balanceado$BAD)
+```
+
+### Testando o modelo balanceado
+
+```{r}
+(modelo_v2 <- randomForest(BAD ~ ., data = dados_balanceado, ntree = 100))
+```
+Neste primeiro momento, vemos como a taxa de erro OOB subiu expressivamente, ficando acima dos 39%. Abaixo também vemos como o erro começa bem alto até se estabilizar nessa faixa.
+
+```{r graph 6, fig.dim=c(8,4)}
+plot(modelo_v2)
+```
+
+Previsões e **confusion matrix**
+
+```{r}
+previsoes_v2 <- predict(modelo_v2, dados_teste)
+
+(cm_v2 <- caret::confusionMatrix(previsoes_v2, dados_teste$BAD, positive = "1"))
+```
+
+É possível notar também uma queda expressiva para a **Accuracy**, ficando no patamar de 0.61. Isso acontece possivelmente pois os dados estão menos viesados (base equilibrada entre adimplente e inadimplente).
+
+Agora olhemos para as demais métricas:
+
+```{r}
+(precision <- posPredValue(previsoes_v2, dados_teste$BAD))
+
+(recall <- sensitivity(previsoes_v2, dados_teste$BAD))
+
+(F1 <- 2 * ((precision * recall) / (precision + recall)))
+```
+Os indicadores Recall e F1-Score também diminuiram bastante dos vistos anteriormente, entretanto esses indicam melhor a realidade dos dados.
+
+## Importância das variáveis
+
+Avaliando a importância das variáveis preditoras para as previsões. Para isso irei obter a importância (peso relativo dado pelo algoritmo para criar o modelo) para as variáveis e criando ranking de variáveis baseado nesse indicador:
+
+```{r}
+imp_var <- importance(modelo_v2)
+varImportance <- data.frame(Variables = row.names(imp_var),
+                            Importance = round(imp_var[, 'MeanDecreaseGini'], 2))
+
+(rankImportance <- varImportance %>%
+  mutate(Rank = paste0('#', dense_rank(desc(Importance)))))
+```
+
+Visualizando a importancia relativa das variáveis
+
+```{r graph 9, fig.dim=c(8,5)}
+rankImportance %>%
+  ggplot(aes(x = reorder(Variables, Importance),
+             y = Importance,
+             fill = Importance)) +
+  geom_bar(stat = 'identity') +
+  geom_text(aes(x = Variables, y = 0.5, label = Rank),
+            hjust = 0,
+            vjust = 0.55,
+            size = 4,
+            colour = 'red') +
+  labs(x = 'Variables') +
+  coord_flip()
+```
+
+Vemos como o modelo deu grande importância para as variáveis **ClientID** e **ShopID** mesmo não fazendo sentido em sua previsão (não possuem informação relevante para a previsão). O motivo seria, possivelmente, que essas variáveis representam cada cliente da base contém todas as informações a cerca dele.
+
+### Criando uma versão 3 do modelo
+
+Agora com a base de dados balanceada e variáveis mais relevantes para a predição, irei criar uma 3ª versão do modelo. Irei usar somente as variáveis relevantes para o modelo, de acordo com a sua *Importance*.
+
+```{r}
+(modelo_v3 <- randomForest(BAD ~ 
+                            age + personalNetIncome + professionCode +
+                            monthsInResidence + monthsInTheJob + bestPaymentDay,
+                          data = dados_balanceado,
+                          ntree = 100))
+```
+
+Em sua 3ª versão, vemos como o erro OOB se elevou novamente, indo para o patamar de 42%.
+
+```{r graph 10, fig.dim=c(8,4)}
+plot(modelo_v3)
+```
+
+**Previsão e Confussion Matrix**
+
+```{r}
+previsoes_v3 <- predict(modelo_v3, dados_teste)
+
+(cm_v3 <- confusionMatrix(previsoes_v3, dados_teste$BAD, positive = "1"))
+```
+
+O mesmo ocorre para a Accuracy, caindo para o patamar de 0.58, medida baixa comparada a sua primeira versão. Agora veremos as demais métricas.
+
+```{r}
+(precision <- posPredValue(previsoes_v3, dados_teste$BAD))
+
+(recall <- sensitivity(previsoes_v3, dados_teste$BAD))
+
+(F1 <- 2 * ((precision * recall) / (precision + recall)))
+```
+O comportamento para as demais métricas foram semelhantes, caindo para patamares menores do que os vistos antes.
+
+Por fim, o modelo em sua 3ª versão obteve resultados expressivamentes menores do que os vistos no começo, entretanto eles correspondem melhor a realidade do problema e da realidade da base de dados. Isto é,  mesmo obtendo resultados "piores", ele está melhor ajustado, balanceado e compreende melhor a realidade, sendo assim possível chama-lo de um modelo "melhor".
+
