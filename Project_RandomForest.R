@@ -14,50 +14,50 @@ library(e1071) # pacotes para trabalhar com ML
 library(readr)
 
 # Carregando base de dados
-mutual_clientes <- read_csv("MutualClients.csv")
+clientes <- read_csv("Clients.csv")
 
 # Visualizando dados e sua estrutura
-dim(mutual_clientes)
-str(mutual_clientes, give.attr = F)
-summary(mutual_clientes)
+dim(clientes)
+str(clientes, give.attr = F)
+summary(clientes)
 
 #### Análise Exploratóra, Manipulação, Limpeza e Tratamento de Dados ####
 
 ### Verificando valores ausentes e removendo do dataset
 # Para visualizar valores ausentes
-missmap(mutual_clientes, main = "Valores Missing Observados")
+missmap(clientes, main = "Valores Missing Observados")
 
 # contagem de valores ausentes
-sapply(mutual_clientes, function(x) sum(is.na(x))) 
+sapply(clientes, function(x) sum(is.na(x))) 
 
 # limpando a base
-mutual_clientes <- mutual_clientes %>%
+clientes <- clientes %>%
   mutate(...1 = NULL,
          education = NULL) %>%
   tidyr::drop_na()
 
-head(mutual_clientes)
+head(clientes)
 
 # Transformando a variável de idade para o tipo fator com faixas etárias
-# mutual_clientes$age <- cut(mutual_clientes$age,
+# clientes$age <- cut(clientes$age,
 #                            c(0, 25, 60, 100),
 #                            labels = c("Jovem",
 #                                       "Adulto",
 #                                       "Idoso"))
 
 # alterando a variável dependente para o tipo fator
-str(mutual_clientes$BAD)
+str(clientes$BAD)
 
-mutual_clientes$BAD <- as.factor(mutual_clientes$BAD)
+clientes$BAD <- as.factor(clientes$BAD)
 
 # Total de adimplentes vs inadimplentes
-table(mutual_clientes$BAD)
+table(clientes$BAD)
 
 # Em porcentagens
-prop.table(table(mutual_clientes$BAD))
+prop.table(table(clientes$BAD))
 
 # Plot da distribuição usando ggplot2
-mutual_clientes %>%
+clientes %>%
   ggplot(aes(x = BAD, y = length(BAD))) +
   geom_bar(stat = "identity") +
   labs(x = "BAD", y = "Quantidade") +
@@ -69,21 +69,21 @@ set.seed(1234)
 ### Amostragem estratificada
 # Seleciona as linhas de acordo com a variável inadimplente como strata
 
-indice <- createDataPartition(mutual_clientes$BAD, p = 0.75, list = F)
+indice <- createDataPartition(clientes$BAD, p = 0.75, list = F)
 dim(indice)
 
 # Definindo os dados de treinamento como subconjunto da base de dados original
 # atraves dos numeros indices de linha
 
-dados_treino <- mutual_clientes[indice,]
+dados_treino <- clientes[indice,]
 dim(dados_treino)
 table(dados_treino$BAD)
 
 prop.table(table(dados_treino$BAD))
-prop.table(table(mutual_clientes$BAD))
+prop.table(table(clientes$BAD))
 
 compare <- cbind(Treinamento = prop.table(table(dados_treino$BAD)),
-                 Original = prop.table(table(mutual_clientes$BAD)))
+                 Original = prop.table(table(clientes$BAD)))
 
 melt_compare <- melt(compare)
 
@@ -93,7 +93,7 @@ melt_compare %>%
   theme(axis.text.x = element_text(angle = 90, hjust = 1))
 
 # Definindo os dados de teste
-dados_teste <- mutual_clientes[-indice,]
+dados_teste <- clientes[-indice,]
 dim(dados_teste)
 
 #### Modelo de Machine Learning ####
